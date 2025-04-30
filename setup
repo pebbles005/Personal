@@ -1,0 +1,16 @@
+#!/bin/sh
+
+mkdir -p $HOME/Documents/
+
+cp $HOME/Personal/bookmarks.html $HOME/Documents/bookmarks.html
+cp $HOME/Personal/pass-gpg-public-key.asc $HOME/Documents/pass-gpg-public-key.asc
+cp $HOME/Personal/pass-gpg-private-key.asc $HOME/Documents/pass-gpg-private-key.asc
+
+echo "decrypting bookmarks.html using ansible"
+ansible-vault decrypt $HOME/Documents/bookmarks.html
+echo "decrypting private gpg key using ansible"
+ansible-vault decrypt $HOME/Documents/pass-gpg-private-key.asc
+echo "importing public gpg key using gpg"
+gpg --import $HOME/Documents/pass-gpg-public-key.asc
+echo "importing private gpg key using gpg"
+gpg --import $HOME/Documents/pass-gpg-private-key.asc
