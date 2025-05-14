@@ -1,16 +1,64 @@
-#!/bin/sh
+#!/usr/bin/env bash
+set -euo pipefail
 
-mkdir -p $HOME/Documents/
+echo "Starting SSH and GPG setup..."
 
-cp $HOME/Personal/bookmarks.html $HOME/Documents/bookmarks.html
-cp $HOME/Personal/pass-gpg-public-key.asc $HOME/Documents/pass-gpg-public-key.asc
-cp $HOME/Personal/pass-gpg-private-key.asc $HOME/Documents/pass-gpg-private-key.asc
+# Prompt for Ansible Vault password
+read -rsp "Vault password: " VAULT_PASS
+echo
 
-echo "decrypting bookmarks.html using ansible"
-ansible-vault decrypt $HOME/Documents/bookmarks.html
-echo "decrypting private gpg key using ansible"
-ansible-vault decrypt $HOME/Documents/pass-gpg-private-key.asc
-echo "importing public gpg key using gpg"
-gpg --import $HOME/Documents/pass-gpg-public-key.asc
-echo "importing private gpg key using gpg"
-gpg --import $HOME/Documents/pass-gpg-private-key.asc
+# Temporary directory for decrypted files
+TMPDIR=$(mktemp -d)
+trap 'rm -rf "$TMPDIR"' EXIT
+
+SSH_DIR="$HOME/.ssh"
+DOCS_DIR="$HOME/Documents"
+
+# Ensure target directories exist
+echo "Ensuring ~/.ssh and ~/Documents directories exist..."
+mkdir -p "$SSH_DIR" "$DOCS_DIR"
+chmod 700 "$SSH_DIR" "$DOCS_DIR"
+
+vault_decrypt() {
+    local src="$1"
+    local dest="$2"
+    echo "Decrypting $src -> $dest"
+    ansible-vault view "$src" --vault-password-file=<(echo "$VAULT_PASS") >"$dest"
+}
+
+echo "Decrypting and copying bookmarks..."
+vault_decrypt "bookmarks.html" "$DOCS_DIR/bookmarks.html"
+chmod 600 "$DOCS_DIR/bookmarks.html"
+
+echo "Setting up personal SSH key..."
+vault_decrypt ".ssh/id_ed25519_github_personal" "$SSH_DIR/id_ed25519_github_personal"
+chmod 600 "$SSH_DIR/id_ed25519_github_personal"
+cp -v ".ssh/id_ed25519_github_personal.pub" "$SSH_DIR/"
+chmod 644 "$SSH_DIR/id_ed25519_github_personal.pub"
+
+echo "Setting up work SSH key..."
+vault_decrypt ".ssh/id_ed25519_github_work" "$SSH_DIR/id_ed25519_github_work"
+chmod 600 "$SSH_DIR/id_ed25519_github_work"
+cp -v ".ssh/id_ed25519_github_work.pub" "$SSH_DIR/"
+chmod 644 "$SSH_DIR/id_ed25519_github_work.pub"
+
+echo "Copying SSH config..."
+cp -v ".ssh/config" "$SSH_DIR/"
+chmod 644 "$SSH_DIR/config"
+
+echo "Setting up GPG keys..."
+vault_decrypt ".gnupg/pass-gpg-private-key.asc" "$DOCS_DIR/pass-gpg-private-key.asc"
+chmod 600 "$DOCS_DIR/pass-gpg-private-key.asc"
+cp -v ".gnupg/pass-gpg-public-key.asc" "$DOCS_DIR/pass-gpg-public-key.asc"
+chmod 644 "$DOCS_DIR/pass-gpg-public-key.asc"
+
+echo "Importing GPG private key..."
+gpg --import "$DOCS_DIR/pass-gpg-private-key.asc" >/dev/null
+
+echo "Importing GPG public key..."
+gpg --import "$DOCS_DIR/pass-gpg-public-key.asc" >/dev/null
+
+echo "All keys set up successfully."
+
+echo "cloning .password-store"
+git clone github-personal:pebbles005/.password-store $HOME/.password-store
